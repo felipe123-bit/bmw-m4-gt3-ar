@@ -92,6 +92,8 @@
   <a-marker id="marker" preset="hiro" smooth="true" smoothCount="10" smoothTolerance="0.01" smoothThreshold="5">
     <!-- Modelo en metros, base en y=0, centrado, frente hacia +Z (borde inferior del marcador = lado del usuario) -->
     <a-entity id="car" gltf-model="../bmw_m4_gt3_real.glb" position="0 0 0" rotation="0 0 0"></a-entity>
+    <!-- Cubo de prueba: ~3 cm sobre el marcador de 15 cm, visible siempre que se detecte el marcador -->
+    <a-box id="testcube" color="#FF5500" width="0.2" height="0.2" depth="0.2" position="0 0.1 0" material="shader: flat"></a-box>
   </a-marker>
   <a-entity camera></a-entity>
 </a-scene>
@@ -159,8 +161,24 @@
         }, function(e){ perm = 'no disponible (' + e.name + ')'; });
       } else perm = 'no disponible en este navegador';
     }catch(e){ perm = 'no disponible'; }
-    document.getElementById('car').addEventListener('model-loaded', function(){ modelo = 'OK'; });
-    document.getElementById('car').addEventListener('model-error', function(e){ modelo = 'ERROR ' + (e.detail && e.detail.src); });
+    var carEl = document.getElementById('car'), t0 = Date.now(), meshes = 0, bbox = '';
+    carEl.addEventListener('model-loaded', function(){
+      modelo = 'OK';
+      try{
+        var root = carEl.getObject3D('mesh'); root.traverse(function(o){ if (o.isMesh) meshes++; });
+        apply();
+      }catch(e){ modelo = 'OK pero sin malla: ' + e; }
+    });
+    carEl.addEventListener('model-error', function(e){ modelo = 'ERROR al cargar ' + (e.detail && (e.detail.src || e.detail.message || e.detail)); });
+    function marcadorInfo(){
+      try{
+        var m = document.getElementById('marker').object3D, c = carEl.object3D;
+        var box = new THREE.Box3().setFromObject(c), sz = box.getSize(new THREE.Vector3());
+        var dist = m.position.length();
+        return 'visible=' + m.visible + ' · distancia cámara↔marcador=' + dist.toFixed(2) + ' marcadores (~' + Math.round(dist * markerCm()) + ' cm)' +
+               ' · auto ' + sz.x.toFixed(2) + '×' + sz.y.toFixed(2) + '×' + sz.z.toFixed(2) + ' marcadores · escala=' + carEl.object3D.scale.x.toFixed(3);
+      }catch(e){ return 'n/d (' + e.message + ')'; }
+    }
     function row(k, v, ok){ return '<div><b>' + k + ':</b> <span class="' + (ok===true?'ok':ok===false?'bad':'') + '">' + v + '</span></div>'; }
     function tick(){
       var v = document.getElementById('arjs-video'), act = false, det = 'no existe el <video>';
@@ -175,7 +193,8 @@
         row('Permiso de cámara', perm, perm === 'granted' ? true : perm === 'denied' ? false : undefined) +
         row('getUserMedia', g, g === 'OK' ? true : g.indexOf('ERROR') === 0 ? false : undefined) +
         row('Video activo', det, act) +
-        row('Modelo .glb', modelo, modelo === 'OK' ? true : modelo.indexOf('ERROR') === 0 ? false : undefined) +
+        row('Modelo', (modelo === 'cargando…' && Date.now() - t0 > 15000 ? 'cargando… (más de 15 s, 5 MB: ¿red lenta?)' : modelo) + (modelo === 'OK' ? ' · ' + meshes + ' mallas' : ''), modelo === 'OK' ? true : modelo.indexOf('ERROR') === 0 ? false : undefined) +
+        row('Pose', marcadorInfo()) +
         (window.__diag.errs.length ? row('Errores JS', window.__diag.errs.slice(-3).join(' | '), false) : '');
     }
     tick(); setInterval(tick, 1000);
