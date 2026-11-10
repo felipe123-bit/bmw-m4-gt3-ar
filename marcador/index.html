@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b0d">
+<title>BMW M4 GT3 · AR con marcador</title>
+<script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/aframe/build/aframe-ar.js"></script>
+<style>
+  :root{--bg:#0b0b0d;--surface:rgba(22,22,26,.92);--text:#f2f2f4;--muted:#9a9aa3;--accent:#FF5500;--line:#2a2a31}
+  *{box-sizing:border-box;margin:0}
+  html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .ui{position:fixed;left:0;right:0;z-index:10;padding:0 16px;pointer-events:none}
+  .ui > *{pointer-events:auto}
+  #top{top:0;padding-top:max(14px,env(safe-area-inset-top))}
+  #bottom{bottom:0;padding-bottom:max(14px,env(safe-area-inset-bottom))}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px 14px;
+    backdrop-filter:blur(8px)}
+  .tag{color:var(--accent);font-size:.7rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase}
+  h1{font-size:1.15rem;margin-top:2px}
+  #hint{margin-top:6px;font-size:.95rem;color:var(--text)}
+  #hint.found{color:var(--accent)}
+  .modes{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .modes button{min-height:48px;border-radius:12px;border:1px solid var(--line);background:#1d1d22;
+    color:var(--text);font:700 1rem system-ui,sans-serif;cursor:pointer}
+  .modes button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff;
+    box-shadow:0 6px 20px rgba(255,85,0,.35)}
+  .modes button:focus-visible,#cm:focus-visible{outline:3px solid #fff;outline-offset:2px}
+  .row{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:.9rem;color:var(--muted)}
+  .row[hidden]{display:none}
+  #cm{width:84px;min-height:44px;border-radius:10px;border:1px solid var(--line);background:#0f0f12;
+    color:var(--text);font:600 1rem system-ui,sans-serif;padding:0 10px;text-align:right}
+  #info{margin-top:8px;font-size:.8rem;color:var(--muted);line-height:1.35}
+  #info b{color:var(--text)}
+</style>
+</head>
+<body>
+<div id="top" class="ui"><div class="card">
+  <div class="tag">Realidad aumentada · marcador</div>
+  <h1>BMW M4 GT3 <span style="color:var(--accent)">2021</span></h1>
+  <p id="hint">Apuntá la cámara al marcador</p>
+</div></div>
+
+<div id="bottom" class="ui"><div class="card">
+  <div class="modes" role="group" aria-label="Escala">
+    <button id="btn-maqueta" aria-pressed="true">Maqueta</button>
+    <button id="btn-real" aria-pressed="false">Tamaño real</button>
+  </div>
+  <label class="row" id="cm-row" for="cm" hidden>
+    Lado del marcador impreso
+    <input id="cm" type="number" inputmode="decimal" min="5" max="200" step="0.5" value="15"> cm
+  </label>
+  <p id="info"></p>
+</div></div>
+
+<a-scene vr-mode-ui="enabled: false"
+         renderer="logarithmicDepthBuffer: true; alpha: true"
+         arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono; trackingMethod: best;">
+  <a-light type="ambient" intensity="0.9"></a-light>
+  <a-light type="directional" intensity="1.1" position="1 3 2"></a-light>
+
+  <!-- Suavizado: promedia las últimas 10 poses y ignora saltos mínimos -->
+  <a-marker id="marker" preset="hiro" smooth="true" smoothCount="10" smoothTolerance="0.01" smoothThreshold="5">
+    <!-- Modelo en metros, base en y=0, centrado, frente hacia +Z (borde inferior del marcador = lado del usuario) -->
+    <a-entity id="car" gltf-model="../bmw_m4_gt3_real.glb" position="0 0 0" rotation="0 0 0"></a-entity>
+  </a-marker>
+  <a-entity camera></a-entity>
+</a-scene>
+
+<script>
+  // 1 unidad de A-Frame = lado del marcador. El modelo está en metros.
+  var CAR_LEN_M = 5.02;      // largo real del auto (medido en el .glb)
+  var MAQUETTE_LEN = 3;      // maqueta: el auto mide 3 anchos de marcador
+
+  // Escala (multiplicador del modelo) según modo y tamaño impreso
+  function carScale(mode, markerCm){
+    if (mode === 'maqueta') return MAQUETTE_LEN / CAR_LEN_M;
+    return 100 / markerCm;   // 1 m real = (100/cm) lados de marcador
+  }
+
+  var mode = 'maqueta';
+  var car = document.getElementById('car');
+  var cmInput = document.getElementById('cm');
+  var info = document.getElementById('info');
+
+  function markerCm(){
+    var v = parseFloat(String(cmInput.value).replace(',', '.'));
+    return (v >= 5 && v <= 200) ? v : 15;
+  }
+
+  function apply(){
+    var cm = markerCm(), k = carScale(mode, cm);
+    car.setAttribute('scale', k + ' ' + k + ' ' + k);
+    var lenMarkers = CAR_LEN_M * k;
+    if (mode === 'maqueta'){
+      info.innerHTML = 'Maqueta: el auto mide <b>' + lenMarkers.toFixed(1).replace('.', ',') + ' marcadores</b> de largo.';
+    } else {
+      info.innerHTML = 'Marcador de <b>' + cm + ' cm</b> → el auto mide <b>' +
+        lenMarkers.toFixed(1).replace('.', ',') + ' marcadores</b> = ' +
+        CAR_LEN_M.toFixed(2).replace('.', ',') + ' m reales.';
+    }
+  }
+
+  function setMode(m){
+    mode = m;
+    document.getElementById('btn-maqueta').setAttribute('aria-pressed', m === 'maqueta');
+    document.getElementById('btn-real').setAttribute('aria-pressed', m === 'real');
+    document.getElementById('cm-row').hidden = (m !== 'real');
+    apply();
+  }
+
+  document.getElementById('btn-maqueta').addEventListener('click', function(){ setMode('maqueta'); });
+  document.getElementById('btn-real').addEventListener('click', function(){ setMode('real'); });
+  cmInput.addEventListener('input', apply);
+
+  var hint = document.getElementById('hint'), marker = document.getElementById('marker');
+  marker.addEventListener('markerFound', function(){ hint.textContent = 'Marcador detectado'; hint.className = 'found'; });
+  marker.addEventListener('markerLost',  function(){ hint.textContent = 'Apuntá la cámara al marcador'; hint.className = ''; });
+
+  setMode('maqueta');
+</script>
+</body>
+</html>
