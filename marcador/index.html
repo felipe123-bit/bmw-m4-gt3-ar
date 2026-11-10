@@ -5,13 +5,38 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b0b0d">
 <title>BMW M4 GT3 · AR con marcador</title>
+<script>
+  // Diagnóstico: se instala antes de AR.js para interceptar getUserMedia
+  window.__diag = {gum:'sin llamar todavía', errs:[]};
+  try{
+    var md = navigator.mediaDevices;
+    if (md && md.getUserMedia){
+      var orig = md.getUserMedia.bind(md);
+      md.getUserMedia = function(c){
+        window.__diag.gum = 'pidiendo cámara…';
+        return orig(c).then(function(st){ window.__diag.gum = 'OK'; return st; },
+          function(e){ window.__diag.gum = 'ERROR ' + (e && e.name) + ': ' + (e && e.message); throw e; });
+      };
+    } else { window.__diag.gum = 'ERROR: navigator.mediaDevices no existe (¿sin HTTPS?)'; }
+  }catch(e){ window.__diag.gum = 'ERROR al instalar hook: ' + e; }
+  window.addEventListener('error', function(e){ window.__diag.errs.push(String(e.message||e) + (e.filename?' @'+e.filename.split('/').pop():'')); });
+  window.addEventListener('unhandledrejection', function(e){ window.__diag.errs.push('promesa: ' + (e.reason && (e.reason.message||e.reason))); });
+</script>
 <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/aframe/build/aframe-ar.js"></script>
 <style>
   :root{--bg:#0b0b0d;--surface:rgba(22,22,26,.92);--text:#f2f2f4;--muted:#9a9aa3;--accent:#FF5500;--line:#2a2a31}
   *{box-sizing:border-box;margin:0}
-  html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+  /* El <video> de AR.js usa z-index:-2: el fondo oscuro va SOLO en html; body debe ser transparente */
+  html{background:var(--bg)}
+  html,body{height:100%;overflow:hidden;color:var(--text);
     font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  body{background:transparent}
+  #diag{position:fixed;left:8px;right:8px;top:50%;transform:translateY(-50%);z-index:20;max-height:40dvh;overflow:auto;
+    background:rgba(0,0,0,.82);border:1px solid var(--accent);border-radius:12px;padding:8px 10px;
+    font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;color:#eee;pointer-events:auto}
+  #diag b{color:var(--accent)} #diag .ok{color:#4ade80} #diag .bad{color:#f87171}
+  #diag button{float:right;margin-left:8px;background:#222;color:#eee;border:1px solid #555;border-radius:8px;padding:2px 8px;font:inherit}
   .ui{position:fixed;left:0;right:0;z-index:10;padding:0 16px;pointer-events:none}
   .ui > *{pointer-events:auto}
   #top{top:0;padding-top:max(14px,env(safe-area-inset-top))}
@@ -54,6 +79,8 @@
   </label>
   <p id="info"></p>
 </div></div>
+
+<div id="diag" aria-live="polite"><button id="diag-x" type="button">ocultar</button><b>Diagnóstico</b><div id="diag-body">…</div></div>
 
 <a-scene vr-mode-ui="enabled: false"
          renderer="logarithmicDepthBuffer: true; alpha: true"
@@ -120,6 +147,39 @@
   marker.addEventListener('markerLost',  function(){ hint.textContent = 'Apuntá la cámara al marcador'; hint.className = ''; });
 
   setMode('maqueta');
+
+  // ---- Recuadro de diagnóstico ----
+  (function(){
+    var body = document.getElementById('diag-body'), perm = 'consultando…', modelo = 'cargando…';
+    document.getElementById('diag-x').addEventListener('click', function(){ document.getElementById('diag').style.display = 'none'; });
+    try{
+      if (navigator.permissions && navigator.permissions.query){
+        navigator.permissions.query({name:'camera'}).then(function(p){
+          perm = p.state; p.onchange = function(){ perm = p.state; };
+        }, function(e){ perm = 'no disponible (' + e.name + ')'; });
+      } else perm = 'no disponible en este navegador';
+    }catch(e){ perm = 'no disponible'; }
+    document.getElementById('car').addEventListener('model-loaded', function(){ modelo = 'OK'; });
+    document.getElementById('car').addEventListener('model-error', function(e){ modelo = 'ERROR ' + (e.detail && e.detail.src); });
+    function row(k, v, ok){ return '<div><b>' + k + ':</b> <span class="' + (ok===true?'ok':ok===false?'bad':'') + '">' + v + '</span></div>'; }
+    function tick(){
+      var v = document.getElementById('arjs-video'), act = false, det = 'no existe el <video>';
+      if (v){
+        var tr = v.srcObject && v.srcObject.getVideoTracks ? v.srcObject.getVideoTracks()[0] : null;
+        act = !!(tr && tr.readyState === 'live' && !v.paused && v.videoWidth > 0);
+        det = (act ? 'sí' : 'no') + ' · ' + v.videoWidth + '×' + v.videoHeight + ' · pausado=' + v.paused + ' · pista=' + (tr ? tr.readyState : 'ninguna');
+      }
+      var g = window.__diag.gum;
+      body.innerHTML =
+        row('HTTPS', window.isSecureContext ? 'sí' : 'NO', window.isSecureContext) +
+        row('Permiso de cámara', perm, perm === 'granted' ? true : perm === 'denied' ? false : undefined) +
+        row('getUserMedia', g, g === 'OK' ? true : g.indexOf('ERROR') === 0 ? false : undefined) +
+        row('Video activo', det, act) +
+        row('Modelo .glb', modelo, modelo === 'OK' ? true : modelo.indexOf('ERROR') === 0 ? false : undefined) +
+        (window.__diag.errs.length ? row('Errores JS', window.__diag.errs.slice(-3).join(' | '), false) : '');
+    }
+    tick(); setInterval(tick, 1000);
+  })();
 </script>
 </body>
 </html>
