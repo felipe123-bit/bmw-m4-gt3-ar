@@ -73,6 +73,9 @@
     <button id="btn-maqueta" aria-pressed="true">Maqueta</button>
     <button id="btn-real" aria-pressed="false">Tamaño real</button>
   </div>
+  <div class="modes" style="grid-template-columns:1fr;margin-top:10px">
+    <button id="btn-pantalla" aria-pressed="false">Marcador en pantalla</button>
+  </div>
   <label class="row" id="cm-row" for="cm" hidden>
     Lado del marcador impreso
     <input id="cm" type="number" inputmode="decimal" min="5" max="200" step="0.5" value="15"> cm
@@ -92,8 +95,6 @@
   <a-marker id="marker" preset="hiro" smooth="true" smoothCount="10" smoothTolerance="0.01" smoothThreshold="5">
     <!-- Modelo en metros, base en y=0, centrado, frente hacia +Z (borde inferior del marcador = lado del usuario) -->
     <a-entity id="car" gltf-model="../bmw_m4_gt3_real.glb" position="0 0 0" rotation="0 0 0"></a-entity>
-    <!-- Cubo de prueba: ~3 cm sobre el marcador de 15 cm, visible siempre que se detecte el marcador -->
-    <a-box id="testcube" color="#FF5500" width="0.2" height="0.2" depth="0.2" position="0 0.1 0" material="shader: flat"></a-box>
   </a-marker>
   <a-entity camera></a-entity>
 </a-scene>
@@ -143,6 +144,13 @@
   document.getElementById('btn-maqueta').addEventListener('click', function(){ setMode('maqueta'); });
   document.getElementById('btn-real').addEventListener('click', function(){ setMode('real'); });
   cmInput.addEventListener('input', apply);
+
+  // Marcador en pantalla (monitor vertical): el auto gira -90° en X para verse derecho. Apagado = marcador en mesa.
+  document.getElementById('btn-pantalla').addEventListener('click', function(){
+    var on = this.getAttribute('aria-pressed') !== 'true';
+    this.setAttribute('aria-pressed', on);
+    car.setAttribute('rotation', (on ? '-90 0 0' : '0 0 0'));
+  });
 
   var hint = document.getElementById('hint'), marker = document.getElementById('marker');
   marker.addEventListener('markerFound', function(){ hint.textContent = 'Marcador detectado'; hint.className = 'found'; });
