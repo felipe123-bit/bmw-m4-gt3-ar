@@ -47,7 +47,7 @@
   h1{font-size:1.15rem;margin-top:2px}
   #hint{margin-top:6px;font-size:.95rem;color:var(--text)}
   #hint.found{color:var(--accent)}
-  .modes{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .modes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
   .modes button{min-height:48px;border-radius:12px;border:1px solid var(--line);background:#1d1d22;
     color:var(--text);font:700 1rem system-ui,sans-serif;cursor:pointer}
   .modes button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff;
@@ -70,8 +70,9 @@
 
 <div id="bottom" class="ui"><div class="card">
   <div class="modes" role="group" aria-label="Escala">
-    <button id="btn-maqueta" aria-pressed="true">Maqueta</button>
-    <button id="btn-real" aria-pressed="false">Tamaño real</button>
+    <button id="btn-mini" aria-pressed="true">Mini</button>
+    <button id="btn-maqueta" aria-pressed="false">Maqueta</button>
+    <button id="btn-real" aria-pressed="false">Real</button>
   </div>
   <div class="modes" style="grid-template-columns:1fr;margin-top:10px">
     <button id="btn-pantalla" aria-pressed="false">Marcador en pantalla</button>
@@ -103,14 +104,16 @@
   // 1 unidad de A-Frame = lado del marcador. El modelo está en metros.
   var CAR_LEN_M = 5.02;      // largo real del auto (medido en el .glb)
   var MAQUETTE_LEN = 3;      // maqueta: el auto mide 3 anchos de marcador
+  var MINI_LEN_CM = 25;      // mini: el auto mide 25 cm reales sin importar el marcador
 
   // Escala (multiplicador del modelo) según modo y tamaño impreso
   function carScale(mode, markerCm){
+    if (mode === 'mini') return (MINI_LEN_CM / markerCm) / CAR_LEN_M;   // largo en marcadores = 25/cm
     if (mode === 'maqueta') return MAQUETTE_LEN / CAR_LEN_M;
     return 100 / markerCm;   // 1 m real = (100/cm) lados de marcador
   }
 
-  var mode = 'maqueta';
+  var mode = 'mini';
   var car = document.getElementById('car');
   var cmInput = document.getElementById('cm');
   var info = document.getElementById('info');
@@ -124,7 +127,10 @@
     var cm = markerCm(), k = carScale(mode, cm);
     car.setAttribute('scale', k + ' ' + k + ' ' + k);
     var lenMarkers = CAR_LEN_M * k;
-    if (mode === 'maqueta'){
+    if (mode === 'mini'){
+      info.innerHTML = 'Mini: marcador de <b>' + cm + ' cm</b> → el auto mide <b>' + MINI_LEN_CM + ' cm</b> (' +
+        lenMarkers.toFixed(2).replace('.', ',') + ' marcadores).';
+    } else if (mode === 'maqueta'){
       info.innerHTML = 'Maqueta: el auto mide <b>' + lenMarkers.toFixed(1).replace('.', ',') + ' marcadores</b> de largo.';
     } else {
       info.innerHTML = 'Marcador de <b>' + cm + ' cm</b> → el auto mide <b>' +
@@ -135,12 +141,14 @@
 
   function setMode(m){
     mode = m;
+    document.getElementById('btn-mini').setAttribute('aria-pressed', m === 'mini');
     document.getElementById('btn-maqueta').setAttribute('aria-pressed', m === 'maqueta');
     document.getElementById('btn-real').setAttribute('aria-pressed', m === 'real');
-    document.getElementById('cm-row').hidden = (m !== 'real');
+    document.getElementById('cm-row').hidden = (m === 'maqueta');
     apply();
   }
 
+  document.getElementById('btn-mini').addEventListener('click', function(){ setMode('mini'); });
   document.getElementById('btn-maqueta').addEventListener('click', function(){ setMode('maqueta'); });
   document.getElementById('btn-real').addEventListener('click', function(){ setMode('real'); });
   cmInput.addEventListener('input', apply);
@@ -156,7 +164,7 @@
   marker.addEventListener('markerFound', function(){ hint.textContent = 'Marcador detectado'; hint.className = 'found'; });
   marker.addEventListener('markerLost',  function(){ hint.textContent = 'Apuntá la cámara al marcador'; hint.className = ''; });
 
-  setMode('maqueta');
+  setMode('mini');
 
   // ---- Recuadro de diagnóstico ----
   (function(){
