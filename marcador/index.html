@@ -39,8 +39,25 @@
   #diag button{float:right;margin-left:8px;background:#222;color:#eee;border:1px solid #555;border-radius:8px;padding:2px 8px;font:inherit}
   .ui{position:fixed;left:0;right:0;z-index:10;padding:0 16px;pointer-events:none}
   .ui > *{pointer-events:auto}
-  #top{top:0;padding-top:max(14px,env(safe-area-inset-top))}
-  #bottom{bottom:0;padding-bottom:max(14px,env(safe-area-inset-bottom))}
+  #top{top:0;padding-top:max(14px,env(safe-area-inset-top));transition:opacity .4s ease,transform .4s ease}
+  #top.hide{opacity:0;transform:translateY(-8px)}
+  #top.hide > *{pointer-events:none}
+  /* Engranaje + panel plegable */
+  #gear{position:fixed;right:16px;bottom:max(16px,env(safe-area-inset-bottom));z-index:12;width:52px;height:52px;
+    border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--accent);display:grid;place-items:center;
+    cursor:pointer;backdrop-filter:blur(8px);-webkit-tap-highlight-color:transparent;touch-action:manipulation;
+    -webkit-touch-callout:none;user-select:none}
+  #gear svg{width:26px;height:26px;transition:transform .35s ease}
+  #gear[aria-expanded="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
+  #gear[aria-expanded="true"] svg{transform:rotate(60deg)}
+  #gear:focus-visible{outline:3px solid #fff;outline-offset:2px}
+  #panel{position:fixed;left:16px;right:16px;bottom:calc(max(16px,env(safe-area-inset-bottom)) + 64px);z-index:11;
+    max-width:480px;margin-left:auto;opacity:0;visibility:hidden;transform:translateY(10px);
+    transition:opacity .2s ease,transform .2s ease,visibility 0s .2s}
+  #panel.open{opacity:1;visibility:visible;transform:none;transition:opacity .2s ease,transform .2s ease}
+  #btn-diag{background:none;border:0;color:var(--muted);font:600 .8rem system-ui,sans-serif;text-decoration:underline;
+    margin-top:8px;padding:6px 0;cursor:pointer}
+  @media (prefers-reduced-motion:reduce){#top,#panel,#gear svg{transition:none}}
   .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px 14px;
     backdrop-filter:blur(8px)}
   .tag{color:var(--accent);font-size:.7rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase}
@@ -68,7 +85,14 @@
   <p id="hint">Apuntá la cámara al marcador</p>
 </div></div>
 
-<div id="bottom" class="ui"><div class="card">
+<button id="gear" type="button" aria-label="Ajustes" aria-expanded="false" aria-controls="panel">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="3.2"/>
+    <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>
+  </svg>
+</button>
+
+<div id="panel" class="card" role="region" aria-label="Ajustes">
   <div class="modes" role="group" aria-label="Escala">
     <button id="btn-mini" aria-pressed="true">Mini</button>
     <button id="btn-maqueta" aria-pressed="false">Maqueta</button>
@@ -83,15 +107,17 @@
     <input id="cm" type="number" inputmode="decimal" min="5" max="200" step="0.5" value="15"> cm
   </label>
   <p id="info"></p>
-</div></div>
+  <button id="btn-diag" type="button">Diagnóstico</button>
+</div>
 
-<div id="diag" aria-live="polite"><button id="diag-x" type="button">ocultar</button><b>Diagnóstico</b><div id="diag-body">…</div></div>
+<div id="diag" aria-live="polite" style="display:none"><button id="diag-x" type="button">ocultar</button><b>Diagnóstico</b><div id="diag-body">…</div></div>
 
 <a-scene vr-mode-ui="enabled: false"
-         renderer="logarithmicDepthBuffer: true; alpha: true"
+         renderer="logarithmicDepthBuffer: true; alpha: true; colorManagement: true"
          arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono; trackingMethod: best;">
-  <a-light type="ambient" intensity="0.9"></a-light>
-  <a-light type="directional" intensity="1.1" position="1 3 2"></a-light>
+  <!-- Luz: hemisférica (cielo claro / suelo apagado) + direccional suave, sin sombras -->
+  <a-light type="hemisphere" color="#ffffff" groundColor="#555560" intensity="0.85"></a-light>
+  <a-light type="directional" color="#fff6ec" intensity="0.7" position="1 3 2"></a-light>
 
   <!-- Suavizado: promedia las últimas 16 poses; ignora movimientos < 0.015 y exige 4 frames para aceptar un salto -->
   <a-marker id="marker" preset="hiro" smooth="true" smoothCount="16" smoothTolerance="0.015" smoothThreshold="4">
@@ -134,12 +160,12 @@
       var k = (j * N + i) * 4; d[k] = rgb[0]; d[k+1] = rgb[1]; d[k+2] = rgb[2]; d[k+3] = Math.round(a * 255);
     }
     g.putImageData(img, 0, 0);
-    var tex = new THREE.CanvasTexture(c); tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false;
+    var tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding; tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false;
     return tex;
   }
   function softPlane(tex, order){
     var geo = new THREE.PlaneGeometry(1, 1); geo.rotateX(-Math.PI / 2);
-    var mat = new THREE.MeshBasicMaterial({map: tex, transparent: true, depthWrite: false, fog: false});
+    var mat = new THREE.MeshBasicMaterial({map: tex, transparent: true, depthWrite: false, fog: false, toneMapped: false});
     var m = new THREE.Mesh(geo, mat); m.renderOrder = order; return m;
   }
   var baseEl = document.getElementById('base'), shadowEl = document.getElementById('shadow'), floorEl = document.getElementById('floor');
@@ -207,8 +233,39 @@
   });
 
   var hint = document.getElementById('hint'), marker = document.getElementById('marker');
-  marker.addEventListener('markerFound', function(){ hint.textContent = 'Marcador detectado'; hint.className = 'found'; });
-  marker.addEventListener('markerLost',  function(){ hint.textContent = 'Apuntá la cámara al marcador'; hint.className = ''; });
+  var topEl = document.getElementById('top');
+  marker.addEventListener('markerFound', function(){ hint.textContent = 'Marcador detectado'; hint.className = 'found'; topEl.classList.add('hide'); });
+  marker.addEventListener('markerLost',  function(){ hint.textContent = 'Apuntá la cámara al marcador'; hint.className = ''; topEl.classList.remove('hide'); });
+
+  // ---- Color real: salida sRGB + tone mapping ACES ----
+  (function(){
+    var scene = document.querySelector('a-scene');
+    function setup(){
+      var rd = scene.renderer; if (!rd) return;
+      rd.outputEncoding = THREE.sRGBEncoding;
+      rd.toneMapping = THREE.ACESFilmicToneMapping;
+      rd.toneMappingExposure = 1.0;
+      scene.object3D.traverse(function(o){ if (o.material) [].concat(o.material).forEach(function(m){ m.needsUpdate = true; }); });
+    }
+    if (scene.hasLoaded) setup(); else scene.addEventListener('loaded', setup);
+    document.getElementById('car').addEventListener('model-loaded', setup);
+  })();
+
+  // ---- Engranaje: panel plegable; toque largo (600 ms) = diagnóstico ----
+  (function(){
+    var gear = document.getElementById('gear'), panel = document.getElementById('panel'), diag = document.getElementById('diag');
+    var timer = null, long = false;
+    function setPanel(on){ panel.classList.toggle('open', on); gear.setAttribute('aria-expanded', on); }
+    function toggleDiag(){ diag.style.display = (diag.style.display === 'none') ? '' : 'none'; }
+    gear.addEventListener('pointerdown', function(){
+      long = false;
+      timer = setTimeout(function(){ long = true; toggleDiag(); if (navigator.vibrate) navigator.vibrate(30); }, 600);
+    });
+    ['pointerup','pointerleave','pointercancel'].forEach(function(ev){ gear.addEventListener(ev, function(){ clearTimeout(timer); }); });
+    gear.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+    gear.addEventListener('click', function(){ if (long){ long = false; return; } setPanel(!panel.classList.contains('open')); });
+    document.getElementById('btn-diag').addEventListener('click', function(){ toggleDiag(); setPanel(false); });
+  })();
 
   setMode('mini');
 
@@ -249,6 +306,7 @@
     }
     function row(k, v, ok){ return '<div><b>' + k + ':</b> <span class="' + (ok===true?'ok':ok===false?'bad':'') + '">' + v + '</span></div>'; }
     function tick(){
+      if (document.getElementById('diag').style.display === 'none') return;
       var v = document.getElementById('arjs-video'), act = false, det = 'no existe el <video>';
       if (v){
         var tr = v.srcObject && v.srcObject.getVideoTracks ? v.srcObject.getVideoTracks()[0] : null;
