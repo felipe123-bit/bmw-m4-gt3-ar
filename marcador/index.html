@@ -74,7 +74,8 @@
     <button id="btn-maqueta" aria-pressed="false">Maqueta</button>
     <button id="btn-real" aria-pressed="false">Real</button>
   </div>
-  <div class="modes" style="grid-template-columns:1fr;margin-top:10px">
+  <div class="modes" style="grid-template-columns:1fr 2fr;margin-top:10px">
+    <button id="btn-base" aria-pressed="true">Base</button>
     <button id="btn-pantalla" aria-pressed="false">Marcador en pantalla</button>
   </div>
   <label class="row" id="cm-row" for="cm" hidden>
@@ -92,9 +93,13 @@
   <a-light type="ambient" intensity="0.9"></a-light>
   <a-light type="directional" intensity="1.1" position="1 3 2"></a-light>
 
-  <!-- Suavizado: promedia las últimas 10 poses y ignora saltos mínimos -->
-  <a-marker id="marker" preset="hiro" smooth="true" smoothCount="10" smoothTolerance="0.01" smoothThreshold="5">
+  <!-- Suavizado: promedia las últimas 16 poses; ignora movimientos < 0.015 y exige 4 frames para aceptar un salto -->
+  <a-marker id="marker" preset="hiro" smooth="true" smoothCount="16" smoothTolerance="0.015" smoothThreshold="4">
     <!-- Modelo en metros, base en y=0, centrado, frente hacia +Z (borde inferior del marcador = lado del usuario) -->
+    <!-- Base oscura que tapa el Hiro (plano del marcador, siempre horizontal) -->
+    <a-entity id="base"></a-entity>
+    <!-- Sombra de contacto: sigue la rotación del auto (modo marcador en pantalla) -->
+    <a-entity id="floor"><a-entity id="shadow"></a-entity></a-entity>
     <a-entity id="car" gltf-model="../bmw_m4_gt3_real.glb" position="0 0 0" rotation="0 0 0"></a-entity>
   </a-marker>
   <a-entity camera></a-entity>
@@ -113,6 +118,39 @@
     return 100 / markerCm;   // 1 m real = (100/cm) lados de marcador
   }
 
+  // ---- Suelo: base oscura difuminada + sombra de contacto (texturas de canvas, sin shadow maps) ----
+  var fp = {x: 4.0, z: 1.9};   // huella del auto en metros (se reemplaza al cargar el modelo)
+
+  // Textura de rectángulo redondeado con borde difuminado. core = semilado totalmente opaco, edge = semilado donde llega a 0 (ambos 0..1)
+  function softRectTexture(rgb, peak, core, edge, radius){
+    var N = 256, c = document.createElement('canvas'); c.width = c.height = N;
+    var g = c.getContext('2d'), img = g.createImageData(N, N), d = img.data;
+    for (var j = 0; j < N; j++) for (var i = 0; i < N; i++){
+      var x = Math.abs((i + .5) / N * 2 - 1), y = Math.abs((j + .5) / N * 2 - 1);
+      var qx = Math.max(x - (core - radius), 0), qy = Math.max(y - (core - radius), 0);
+      var dist = Math.sqrt(qx * qx + qy * qy) - radius;            // distancia al rect. redondeado del núcleo
+      var t = Math.min(Math.max(dist / (edge - core), 0), 1);
+      var a = peak * (1 - t * t * (3 - 2 * t));                    // smoothstep
+      var k = (j * N + i) * 4; d[k] = rgb[0]; d[k+1] = rgb[1]; d[k+2] = rgb[2]; d[k+3] = Math.round(a * 255);
+    }
+    g.putImageData(img, 0, 0);
+    var tex = new THREE.CanvasTexture(c); tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false;
+    return tex;
+  }
+  function softPlane(tex, order){
+    var geo = new THREE.PlaneGeometry(1, 1); geo.rotateX(-Math.PI / 2);
+    var mat = new THREE.MeshBasicMaterial({map: tex, transparent: true, depthWrite: false, fog: false});
+    var m = new THREE.Mesh(geo, mat); m.renderOrder = order; return m;
+  }
+  var baseEl = document.getElementById('base'), shadowEl = document.getElementById('shadow'), floorEl = document.getElementById('floor');
+  // Base: lado 2 marcadores; núcleo opaco de 1.3 (el Hiro mide 1 + ~9% de margen blanco), difumina hasta 2.0
+  baseEl.setObject3D('mesh', softPlane(softRectTexture([18, 18, 20], 1, 0.65, 1.0, 0.25), 1));
+  baseEl.object3D.scale.set(2, 1, 2); baseEl.object3D.position.y = -0.0005;
+  // Sombra: negro suave, más grande que la huella (escala en apply())
+  shadowEl.setObject3D('mesh', softPlane(softRectTexture([0, 0, 0], 0.7, 0.55, 1.0, 0.4), 2));
+  shadowEl.object3D.position.y = 0.0005;
+
+  var SHADOW_GROW = 1.3;
   var mode = 'mini';
   var car = document.getElementById('car');
   var cmInput = document.getElementById('cm');
@@ -126,6 +164,7 @@
   function apply(){
     var cm = markerCm(), k = carScale(mode, cm);
     car.setAttribute('scale', k + ' ' + k + ' ' + k);
+    shadowEl.object3D.scale.set(fp.x * SHADOW_GROW * k, 1, fp.z * SHADOW_GROW * k);
     var lenMarkers = CAR_LEN_M * k;
     if (mode === 'mini'){
       info.innerHTML = 'Mini: marcador de <b>' + cm + ' cm</b> → el auto mide <b>' + MINI_LEN_CM + ' cm</b> (' +
@@ -157,7 +196,14 @@
   document.getElementById('btn-pantalla').addEventListener('click', function(){
     var on = this.getAttribute('aria-pressed') !== 'true';
     this.setAttribute('aria-pressed', on);
-    car.setAttribute('rotation', (on ? '-90 0 0' : '0 0 0'));
+    var rot = (on ? '-90 0 0' : '0 0 0');
+    car.setAttribute('rotation', rot); floorEl.setAttribute('rotation', rot);
+  });
+
+  document.getElementById('btn-base').addEventListener('click', function(){
+    var on = this.getAttribute('aria-pressed') !== 'true';
+    this.setAttribute('aria-pressed', on);
+    baseEl.object3D.visible = on;
   });
 
   var hint = document.getElementById('hint'), marker = document.getElementById('marker');
@@ -182,6 +228,12 @@
       modelo = 'OK';
       try{
         var root = carEl.getObject3D('mesh'); root.traverse(function(o){ if (o.isMesh) meshes++; });
+        // Apoyar el auto en y=0 exacto y centrarlo en x/z (caja en coordenadas locales del auto, sin escala)
+        var co = carEl.object3D; co.updateWorldMatrix(true, true);
+        var b = new THREE.Box3().setFromObject(root).applyMatrix4(new THREE.Matrix4().copy(co.matrixWorld).invert());
+        var ctr = b.getCenter(new THREE.Vector3());
+        root.position.set(root.position.x - ctr.x, root.position.y - b.min.y, root.position.z - ctr.z);
+        var sz0 = b.getSize(new THREE.Vector3()); fp = {x: sz0.x, z: sz0.z};
         apply();
       }catch(e){ modelo = 'OK pero sin malla: ' + e; }
     });
@@ -192,7 +244,7 @@
         var box = new THREE.Box3().setFromObject(c), sz = box.getSize(new THREE.Vector3());
         var dist = m.position.length();
         return 'visible=' + m.visible + ' · distancia cámara↔marcador=' + dist.toFixed(2) + ' marcadores (~' + Math.round(dist * markerCm()) + ' cm)' +
-               ' · auto ' + sz.x.toFixed(2) + '×' + sz.y.toFixed(2) + '×' + sz.z.toFixed(2) + ' marcadores · escala=' + carEl.object3D.scale.x.toFixed(3);
+               ' · auto ' + sz.x.toFixed(2) + '×' + sz.y.toFixed(2) + '×' + sz.z.toFixed(2) + ' marcadores (' + (Math.max(sz.x, sz.y, sz.z) * markerCm()).toFixed(1) + ' cm de largo) · y mín. (marcador)=' + box.clone().applyMatrix4(new THREE.Matrix4().copy(m.matrixWorld).invert()).min.y.toFixed(4) + ' · escala=' + carEl.object3D.scale.x.toFixed(3);
       }catch(e){ return 'n/d (' + e.message + ')'; }
     }
     function row(k, v, ok){ return '<div><b>' + k + ':</b> <span class="' + (ok===true?'ok':ok===false?'bad':'') + '">' + v + '</span></div>'; }
